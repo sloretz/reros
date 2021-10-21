@@ -19,3 +19,4 @@ from .node import Node
 from .node import DefaultNode
 
 from .publisher import Publisher
+from .subscriber import Subscriber
