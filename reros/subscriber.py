@@ -84,12 +84,17 @@ class Subscriber:
         """Take data from the subscription and return the message."""
         # Get data from the lower level
         raw = False
-        msg = self.__subscriber.take_message(self.__msg_type, raw)
+        msg_metadata = self.__subscriber.take_message(self.__msg_type, raw)
+
+        if msg_metadata is None:
+            return None
+
+        # TODO what to do with metadata?
 
         # Tell synchronous iterator data is no longer ready
         self.__data_ready.clear()
         
-        return msg
+        return msg_metadata[0]
 
     def __call_callback(self):
         self.__call_callback(self.__take_data())
