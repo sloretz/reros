@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from concurrent.futures import ThreadPoolExecutor as _ThreadPoolExecutor
 from threading import Lock
 from threading import Thread
@@ -29,16 +28,38 @@ from .context import DefaultContext
 from rclpy.impl.implementation_singleton import rclpy_implementation as _rclpy
 
 
-class SetableBool:
-    """A mutable boolean that can be set inside a tuple."""
+class _MediatorHandle:
 
-    __slots__ = ('value')
+    __slots__ = (
+        '_has_untaken_data',
+        '_ready_callback',
+        '_ready_callback',
+        '_mediator_gc',
+    )
 
-    def __init__(self, initial_value):
-        self.value= initial_value
+    def __init__(self, gc, ready_callback):
+        # This is only meant to be called by the Mediator
+        self._ready_callback = ready_callback
+        self._has_untaken_data = False
+        self._ready_callback = ready_callback
+        self._mediator_gc = gc
 
-    def __bool__(self):
-        return self.value
+    def notify_data_ready(self):
+        self._has_untaken_data = True
+
+        if self._ready_callback:
+            self._ready_callback()
+
+    def notify_took_data(self):
+        """
+        Called by an entity to tell the mediator it took the data that was
+        ready for it.
+
+        The entity won't be executed again until this call is called.
+        """
+        self._has_untaken_data = False
+        if self._mediator_gc:
+            self._mediator_gc.trigger_guard_condition()
 
 
 class Mediator:
@@ -53,7 +74,7 @@ class Mediator:
         self,
         *,
         context: Context = None,
-        executor: None,
+        executor = None,
     ):
         if context is None:
             context = DefaultContext()
@@ -61,34 +82,25 @@ class Mediator:
         if executor is None:
             executor = _ThreadPoolExecutor()
 
+        self.__context = context
+
         # Use a dedidcated thread to notify ready entities
         self.__rcl_wait_thread = Thread(daemon=True, target=self.__rcl_wait)
 
         # Use a guard condition to wake when entities are added or removed
-        self.__gc = _rclpy.GuardCondition(self._context.handle)
-
-        # Single underscore - intended to be used by direct subclasses only
-        self._context = context
-        self.__wait_set = _rclpy.WaitSet(
-            0,
-            1, # Always has the executor's guard condition
-            0,
-            0,
-            0,
-            0,
-            self._context.handle)
+        self.__gc = _rclpy.GuardCondition(self.__context.handle)
 
         self.__services = {}
         self.__subscribers = {}
         self.__clients = {}
         self.__guard_conditions = {
-            self.__gc.pointer(): (self.__gc, None, SetableBool())
+            self.__gc.pointer: (self.__gc, _MediatorHandle(None, None))
         }
         self.__timers = {}
         # TODO Action clients?
         # TODO Action Servers?
 
-        self.register_entity(self.__gc, lambda: pass)
+        self.__resize_wait_set()
         self.__rcl_wait_thread.start()
 
     def register_entity(self, entity, ready_callback: Optional[Callable]):
@@ -97,19 +109,27 @@ class Mediator:
         case it must return a callable with the work to be done with the data.
         Otherwise, the executor will wait for the entity to tell it 
         """
-        # TODO - add entity to the wait set
-        pass
+        # print(f'Registering entity {entity.pointer}')
+        handle = _MediatorHandle(self.__gc, ready_callback)
+
+        if isinstance(entity, _rclpy.Subscription):
+            self.__subscribers[entity.pointer] = (entity, handle)
+
+        self.__gc.trigger_guard_condition()
+        return handle
 
     def __notify_all_ready(self, ready_pointers, entity_map):
-        for ptr in ready_ptrs:
-            entity_callback, took_last_data = entity_map[ptr][1]
-            maybe_work = entity_ready_callback(took_last_data)
+        for ptr in ready_pointers:
+            # print(f'{ptr} is ready!')
+            handle = entity_map[ptr][1]
+            maybe_work = handle.notify_data_ready()
             if maybe_work is not None:
                 # If there is work to do, ask the executor to do it
                 # This also means the entity is ready
                 self.__executor.submit(maybe_work)
 
     def __resize_wait_set(self):
+        # print('Resizing the wait set!')
         # Resize the wait set
         self.__wait_set = _rclpy.WaitSet(
             len(self.__subscribers),
@@ -117,17 +137,34 @@ class Mediator:
             len(self.__timers),
             len(self.__clients),
             len(self.__services),
-            self._context.handle)
+            0,  # TODO events?
+            self.__context.handle)
+
+        # Add entities to the wait set
+        for tmr, _ in self.__timers.values():
+            self.__wait_set.add_timer(tmr)
+        for srv, _ in self.__services.values():
+            self.__wait_set.add_service(srv)
+        for cli, _ in self.__clients.values():
+            self.__wait_set.add_client(cli)
+        for sub, _ in self.__subscribers.values():
+            self.__wait_set.add_subscription(sub)
+        for gc, _ in self.__guard_conditions.values():
+            self.__wait_set.add_guard_condition(gc)
 
     def __rcl_wait(self):
-        while self._context.ok():
-            # Add entities to the wait set
+        # print('Starting wait loop')
+        while self.__context.ok():
+            # TODO - redo this only when needed?
+            self.__resize_wait_set()
 
+            # print('About to wait')
             # TODO could do a watchdog in this thread
             # Wait on the wait set ... forever
             self.__wait_set.wait(-1)
+            # print('Just woke up')
 
-            ready_gcs = self.__wait_set.get_ready_entities('guard_condition'),
+            ready_gcs = self.__wait_set.get_ready_entities('guard_condition')
 
             # Notify all the relevant entities that they're ready
             self.__notify_all_ready(
@@ -144,10 +181,10 @@ class Mediator:
                 self.__clients)
             self.__notify_all_ready(
                 self.__wait_set.get_ready_entities('subscription'),
-                self.__subscriptions)
+                self.__subscribers)
 
-            if self.__gc.pointer() in ready_gcs:
-                self.__resize_wait_set()
+            # if self.__gc.pointer in ready_gcs:
+            #     self.__resize_wait_set()
 
 
 #class ThreadPoolMediator(Mediator):

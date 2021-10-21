@@ -53,7 +53,6 @@ class Subscriber:
         if execution_mediator is None:
             execution_mediator = DefaultMediator()
 
-        self.__executor = executor
         self.__callback = callback
         self.__data_ready = Event()
 
@@ -63,7 +62,7 @@ class Subscriber:
             self.__subscriber = _rclpy.Subscription(
                 node.handle, msg_type, topic, qos_profile.get_c_qos_profile())
 
-        execution_mediator.register_entity(
+        self.__execution_handle = execution_mediator.register_entity(
             self.__subscriber,
             ready_callback=self.__notify_data_ready)
 
@@ -105,8 +104,11 @@ class Subscriber:
     def __next__(self):
         # Wait for data to be available, then take it!
         # TODO raise StopIteration if the context is shutdown
-        self.__data_ready.wait()
-        return self.__take_data()
+        msg = None
+        while None == msg:
+            msg = self.__take_data()
+            self.__data_ready.wait()
+        return msg
 
     # TODO(sloretz) this belongs elsewhere
     def _validate_qos_or_depth_parameter(self, qos_or_depth) -> QoSProfile:
