@@ -93,6 +93,9 @@ class Subscriber:
 
         # Tell synchronous iterator data is no longer ready
         self.__data_ready.clear()
+
+        # Tell the executor we got the data (last to avoid race with __data_ready being set)
+        self.__execution_handle.notify_took_data()
         
         return msg_metadata[0]
 
