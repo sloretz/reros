@@ -37,7 +37,7 @@ class Publisher:
         node: Node = None,
     ):
         check_is_valid_msg_type(msg_type)
-        self._msg_type = msg_type
+        self.__msg_type = msg_type
         if node is None:
             node = DefaultNode()
 
@@ -66,9 +66,9 @@ class Publisher:
 
     def publish(self, msg: Union[MsgType, bytes]):
         with self.handle:
-            if isinstance(msg, self._msg_type):
+            if isinstance(msg, self.__msg_type):
                 self.__publisher.publish(msg)
             elif isinstance(msg, bytes):
                 self.__publisher.publish_raw(msg)
             else:
-                raise TypeError('Expected {}, got {}'.format(self._msg_type, type(msg)))
+                raise TypeError('Expected {}, got {}'.format(self.__msg_type, type(msg)))
