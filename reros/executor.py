@@ -57,9 +57,13 @@ class _MediatorHandle:
 
         The entity won't be executed again until this call is called.
         """
+        # print('Notifying that data was taken')
         self._has_untaken_data = False
         if self._mediator_gc:
             self._mediator_gc.trigger_guard_condition()
+
+    def has_untaken_data(self):
+        return self._has_untaken_data
 
 
 class Mediator:
@@ -141,15 +145,30 @@ class Mediator:
             self.__context.handle)
 
         # Add entities to the wait set
-        for tmr, _ in self.__timers.values():
+        for tmr, handle in self.__timers.values():
+            if handle.has_untaken_data():
+                # print('has untaken data', tmr.pointer)
+                continue
             self.__wait_set.add_timer(tmr)
-        for srv, _ in self.__services.values():
+        for srv, handle in self.__services.values():
+            if handle.has_untaken_data():
+                # print('has untaken data', srv.pointer)
+                continue
             self.__wait_set.add_service(srv)
-        for cli, _ in self.__clients.values():
+        for cli, handle in self.__clients.values():
+            if handle.has_untaken_data():
+                # print('has untaken data', cli.pointer)
+                continue
             self.__wait_set.add_client(cli)
-        for sub, _ in self.__subscribers.values():
+        for sub, handle in self.__subscribers.values():
+            if handle.has_untaken_data():
+                # print('has untaken data', sub.pointer)
+                continue
             self.__wait_set.add_subscription(sub)
-        for gc, _ in self.__guard_conditions.values():
+        for gc, handle in self.__guard_conditions.values():
+            if handle.has_untaken_data():
+                # print('has untaken data', gc.pointer)
+                continue
             self.__wait_set.add_guard_condition(gc)
 
     def __rcl_wait(self):
@@ -183,7 +202,8 @@ class Mediator:
                 self.__wait_set.get_ready_entities('subscription'),
                 self.__subscribers)
 
-            # if self.__gc.pointer in ready_gcs:
+            if self.__gc.pointer in ready_gcs:
+                self.__guard_conditions[self.__gc.pointer][1].notify_took_data()
             #     self.__resize_wait_set()
 
 
