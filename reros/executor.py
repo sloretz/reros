@@ -86,13 +86,13 @@ class Mediator:
         if executor is None:
             executor = _ThreadPoolExecutor()
 
-        self.__context = context
+        self._context = context
 
         # Use a dedidcated thread to notify ready entities
         self.__rcl_wait_thread = Thread(daemon=True, target=self.__rcl_wait)
 
         # Use a guard condition to wake when entities are added or removed
-        self.__gc = _rclpy.GuardCondition(self.__context.handle)
+        self.__gc = _rclpy.GuardCondition(self._context.handle)
 
         self.__services = {}
         self.__subscribers = {}
@@ -142,7 +142,7 @@ class Mediator:
             len(self.__clients),
             len(self.__services),
             0,  # TODO events?
-            self.__context.handle)
+            self._context.handle)
 
         # Add entities to the wait set
         for tmr, handle in self.__timers.values():
@@ -173,7 +173,7 @@ class Mediator:
 
     def __rcl_wait(self):
         # print('Starting wait loop')
-        while self.__context.ok():
+        while self._context.ok():
             # TODO - redo this only when needed?
             self.__resize_wait_set()
 

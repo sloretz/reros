@@ -53,6 +53,10 @@ class Subscriber:
         if execution_mediator is None:
             execution_mediator = DefaultMediator()
 
+        if execution_mediator._context != node._context:
+            raise RuntimeError('execution_mediator and node must belong'
+                               ' to the same context')
+
         self.__callback = callback
         self.__data_ready = Event()
 

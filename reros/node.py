@@ -42,12 +42,12 @@ class Node:
         if context is None:
             context = DefaultContext()
 
-        self.__context = context
+        self._context = context
 
         self.__node = _rclpy.Node(
             name,
             namespace,
-            self.__context.handle,
+            self._context.handle,
             cli_args,
             use_global_arguments,
             enable_rosout
